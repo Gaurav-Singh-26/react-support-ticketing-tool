@@ -1,86 +1,122 @@
+
 const express = require("express");
-const { randomUUID } = require("crypto");
+const mongoose = require("mongoose");
 
 const router = express.Router();
-let tickets = [];
 
 const priorities = ["LOW", "MEDIUM", "HIGH"];
 const statuses = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"];
 const categories = ["TECHNICAL", "BILLING", "GENERAL"];
 
-router.post("/", (req, res) => {
-  const { title, description, priority, status, category } = req.body || {};
+const ticketSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, trim: true },
+    description: { type: String, required: true, trim: true },
+    priority: { type: String, enum: priorities, required: true },
+    status: { type: String, enum: statuses, required: true },
+    category: { type: String, enum: categories, required: true }
+  },
+  { timestamps: true }
+);
 
-  if (
-    typeof title !== "string" || !title.trim() ||
-    typeof description !== "string" || !description.trim() ||
-    !priorities.includes(priority) ||
-    !statuses.includes(status) ||
-    !categories.includes(category)
-  ) {
+const Ticket = mongoose.model("Ticket", ticketSchema);
+
+function validateTicket(body) {
+  const { title, description, priority, status, category } = body || {};
+
+  return (
+    typeof title === "string" && title.trim() &&
+    typeof description === "string" && description.trim() &&
+    priorities.includes(priority) &&
+    statuses.includes(status) &&
+    categories.includes(category)
+  );
+}
+
+router.post("/", async (req, res) => {
+  if (!validateTicket(req.body)) {
     return res.status(400).json({ error: "Invalid ticket fields" });
   }
 
-  const now = new Date().toISOString();
-  const ticket = {
-    id: randomUUID(),
-    title: title.trim(),
-    description: description.trim(),
-    priority,
-    status,
-    category,
-    createdAt: now,
-    updatedAt: now
-  };
+  try {
+    const ticket = await Ticket.create({
+      title: req.body.title.trim(),
+      description: req.body.description.trim(),
+      priority: req.body.priority,
+      status: req.body.status,
+      category: req.body.category
+    });
 
-  tickets.push(ticket);
-  res.status(201).json(ticket);
+    res.status(201).json(ticket);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create ticket" });
+  }
 });
 
-router.get("/", (req, res) => {
-  res.status(200).json({ count: tickets.length, tickets });
+router.get("/", async (req, res) => {
+  try {
+    const tickets = await Ticket.find().sort({ createdAt: -1 });
+    res.json({ count: tickets.length, tickets });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch tickets" });
+  }
 });
 
-router.get("/:id", (req, res) => {
-  const ticket = tickets.find(t => t.id === req.params.id);
-  if (!ticket) return res.status(404).json({ error: "Ticket not found" });
-  res.status(200).json(ticket);
+router.get("/:id", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: "Invalid ticket ID" });
+  }
+
+  try {
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    res.json(ticket);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch ticket" });
+  }
 });
 
-router.put("/:id", (req, res) => {
-  const ticket = tickets.find(t => t.id === req.params.id);
-  if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+router.put("/:id", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: "Invalid ticket ID" });
+  }
 
-  const { title, description, priority, status, category } = req.body || {};
-
-  if (
-    typeof title !== "string" || !title.trim() ||
-    typeof description !== "string" || !description.trim() ||
-    !priorities.includes(priority) ||
-    !statuses.includes(status) ||
-    !categories.includes(category)
-  ) {
+  if (!validateTicket(req.body)) {
     return res.status(400).json({ error: "Invalid ticket fields" });
   }
 
-  Object.assign(ticket, {
-    title: title.trim(),
-    description: description.trim(),
-    priority,
-    status,
-    category,
-    updatedAt: new Date().toISOString()
-  });
+  try {
+    const ticket = await Ticket.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: req.body.title.trim(),
+        description: req.body.description.trim(),
+        priority: req.body.priority,
+        status: req.body.status,
+        category: req.body.category
+      },
+      { new: true, runValidators: true }
+    );
 
-  res.status(200).json(ticket);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    res.json(ticket);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update ticket" });
+  }
 });
 
-router.delete("/:id", (req, res) => {
-  const index = tickets.findIndex(t => t.id === req.params.id);
-  if (index === -1) return res.status(404).json({ error: "Ticket not found" });
+router.delete("/:id", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: "Invalid ticket ID" });
+  }
 
-  tickets.splice(index, 1);
-  res.status(204).send();
+  try {
+    const ticket = await Ticket.findByIdAndDelete(req.params.id);
+    if (!ticket) return res.status(404).json({ error: "Ticket not found" });
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete ticket" });
+  }
 });
 
 module.exports = router;
