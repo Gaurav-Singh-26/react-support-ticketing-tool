@@ -1,0 +1,14 @@
+{
+  "name": "support-ticketing-server",
+  "version": "1.0.0",
+  "description": "Support Ticketing Tool REST API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
